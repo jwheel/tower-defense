@@ -1,0 +1,14 @@
+{
+  "name": "tower-defense",
+  "version": "1.0.0",
+  "description": "a tower defense game",
+  "main": "index.js",
+  "author": "jwheel <josh.m.wheeler@gmail.com>",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "express": "^4.16.2",
+    "rx-jquery": "^1.1.7",
+    "rxjs": "^5.5.3"
+  }
+}
