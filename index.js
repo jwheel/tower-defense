@@ -13,8 +13,6 @@ app.use("/css", express.static(path.join(__dirname, 'public', 'css')));
 app.use("/scripts", express.static(path.join(__dirname, 'public', 'scripts')));
 
 
-
-
 app.listen(3000, function () {
   console.log('Tower Defense app listening on port 3000!')
 });
