@@ -17,6 +17,17 @@ $(function() {
     const itemWindowWidth = 100;
     let width = (stageWidth - TILE_GAP - TILE_GAP* TILE_COLUMNS ) / TILE_COLUMNS;
 
+    let startTile = null;
+    let endTile = null;
+    let currentTile = null;
+    let currentItem = null;
+    let dragging = false;
+    let startPoint = {
+        x: 0,
+        y: 0
+    };
+
+
     const INITIAL_OBJECTS = {
         tiles: factory(),
         money: 50,
@@ -92,7 +103,10 @@ $(function() {
         );
         context.fill();
         context.closePath();
-
+        context.fillStyle = "white";
+        context.textAlign = 'center';
+        context.font = '24px Courier New';
+        context.fillText(item.short, item.x, item.y + 5);
     }
 
     function drawItemWindow() {
@@ -129,21 +143,31 @@ $(function() {
 
 
    function drawTile(tile) {
-        if(tile.isMousedOver) {
+       if(tile.isStart || tile.isEnd) {
+            context.fillStyle = 'blue';
+       }
+        else if(tile.isMousedOver) {
             context.fillStyle = 'black';
         }
         else {
             context.fillStyle = 'pink';
         }
-        context.beginPath();
-        context.rect(
-            tile.x - tile.width / 2,
-            tile.y - tile.height / 2,
-            tile.width,
-            tile.height
-        );
-        context.fill();
-        context.closePath();
+        if(tile.item) {
+            context.fillStyle = 'green';
+            console.log("drawing tile!");
+            drawItem(tile.item);
+        }
+        else {
+            context.beginPath();
+            context.rect(
+                tile.x - tile.width / 2,
+                tile.y - tile.height / 2,
+                tile.width,
+                tile.height
+            );
+            context.fill();
+            context.closePath();
+        }
     }
 
     function drawTiles(tiles) {
@@ -154,26 +178,45 @@ $(function() {
         items.forEach((item) => drawItem(item));
     }
 
+    function checkTiles(tiles, i, j) {
+        if(i >= TILE_COLUMNS || j <= TILE_ROWS || i < 0 || j < 0) {
+            return false;
+        }
+    }
+    
+
     function factory() {
         
         let tiles = [];
 
         for(let i = 0; i < TILE_ROWS; i++) {
             for(let j = 0; j < TILE_COLUMNS; j++) {
-                tiles.push( {
+                let start =  i == 4 && j == 0;
+                let end = i == 4 && j == 19;
+                tile =  {
                     x: j * (width + TILE_GAP) + width / 2 + TILE_GAP,
                     y: i * (width + TILE_GAP) + width / 2 + TILE_GAP ,
                     width: width,
                     height: width,
-                    isMousedOver:false
-                })
+                    isMousedOver:false,
+                    item: null,
+                    isStart: start,
+                    isEnd: end
+
+                };
+                tiles.push(tile);
+                if(start) {
+                    startTile = tile;
+
+                }
+                if (end) {
+                    endTile = end;
+                }
             }
         }
 
         return tiles;
-    }
-
-    
+    }    
 
     const ticker$ = Rx.Observable
         .interval(TICKER_INTERVAL, Rx.Scheduler.requestAnimationFrame)
@@ -210,7 +253,7 @@ $(function() {
             y: touchEvent.changedTouches[0].clientY
         };
     };
-    
+    // The StarCraft codebase had the following inheritance structure:  CUnit < CDoodad < CFlingy < CThingy
     function collision(tile, thingy) {
         return thingy.x  > tile.x - tile.width / 2
             && thingy.x  < tile.x + tile.width / 2
@@ -230,12 +273,54 @@ $(function() {
         .merge(
             Rx.Observable.fromEvent(window, "mousedown").map(mouseEventToCoordinate),
             Rx.Observable.fromEvent(window, "touchstart").map(mouseEventToCoordinate)
-        );
+        ).subscribe(x => {
+            dragging = true;
+            if(x) {
+                startPoint = {x:x.x, y:x.y };
+            }
+        });
 
+    const stops$ = Rx.Observable
+        .merge(
+            Rx.Observable.fromEvent(window, "mouseup").map(mouseEventToCoordinate),
+            Rx.Observable.fromEvent(window, "touchend").map(mouseEventToCoordinate)
+        ).subscribe(x => {
+            // check if currentItem intersects with currentTile
+            if(x && currentItem && currentTile && !currentTile.item && !currentTile.isEnd && !currentTile.isStart) {
+                console.log(currentItem);
+                console.log(currentTile);
+                let intersects = collision(currentItem, currentTile);
+                console.log(intersects);
+                if(intersects) {
+                    currentItem.x = currentTile.x;
+                    currentItem.y = currentTile.y;
+                    currentTile.item = {
+                        name: currentItem.name,
+                        x: currentItem.x,
+                        y: currentItem.y,
+                        width: currentItem.width,
+                        height: currentItem.height,
+                        short: currentItem.short,
+                        isMousedOver: false
+                            };
+                        
+                    drawTile(currentTile);
+                }
+             
+            }            
+            currentItem = null;
+            startPoint = {
+                    x: 0,
+                    y: 0
+                };
+            dragging = false;
+        });;
+
+    
     const hand$ = ticker$
-            .combineLatest(moves$, starts$)
-            .scan((position, [ticker, moves, starts]) => {
-
+            .withLatestFrom(moves$)
+            .scan((position, [ticker, moves]) => {
+                
                 return {x:moves.x, y: moves.y};
             }, {x:stageWidth/2, y:stageWidth/2});
     
@@ -244,13 +329,36 @@ $(function() {
         context.clearRect(0, 0, canvas.width, canvas.height);
         drawItemWindow();
         objects.items.forEach(item => {
-            item.isMousedOver = collision(item, hand);            
+            item.isMousedOver = collision(item, hand);        
+            let isClicked = collision(item, startPoint);
+            if (isClicked && currentItem === null) {
+                //then we have clicked on this item
+                console.log("We clicked the thing!");
+                currentItem = {
+                    name: item.name,
+                    x: item.x,
+                    y: item.y,
+                    width: item.width,
+                    height: item.height,
+                    short: item.short
+                                }
+            }
         });
         objects.tiles.forEach(tile => {
-            tile.isMousedOver = collision(tile, hand);            
+            tile.isMousedOver = collision(tile, hand); 
+            if(tile.isMousedOver) {
+                currentTile = tile;
+            }   
         });
+        
         drawItems(objects.items);
         drawTiles(objects.tiles);
+        if(dragging && currentItem !== null) {
+            currentItem.x = hand.x;
+            currentItem.y = hand.y;
+            drawItem(currentItem);
+
+        }
     }
 
     drawTitle();
